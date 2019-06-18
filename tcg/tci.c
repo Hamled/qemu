@@ -469,9 +469,8 @@ static bool tci_compare64(uint64_t u0, uint64_t u1, TCGCond condition)
 #include "qemu.h"
 #endif
 
-#define QIRA_DEBUG(...) {}
-//#define QIRA_DEBUG qemu_debug
-//#define QIRA_DEBUG printf
+#define QIRA_DEBUG(FMT, ...) \
+    qemu_log_mask(LOG_QIRA_DEBUG, FMT, ## __VA_ARGS__)
 
 // struct storing change data
 struct change {
