@@ -608,12 +608,12 @@ struct change *add_change(target_ulong addr, uint64_t data, uint32_t flags) {
 
   if (cc == GLOBAL_change_size) {
     // double the buffer size
-    QIRA_DEBUG("doubling buffer with size %d\n", GLOBAL_change_size);
+    QIRA_DEBUG("doubling buffer with size %zu\n", GLOBAL_change_size);
     resize_change_buffer(GLOBAL_change_size * sizeof(struct change) * 2);
     GLOBAL_change_size *= 2;
   }
 
-  QIRA_DEBUG("chng:  0x%x:%x = 0x%lX\n", addr, flags, data);
+  QIRA_DEBUG("chng:  0x"TARGET_FMT_lx":%x = 0x%016"PRIx64"\n", addr, flags, data);
   struct change *this_change = GLOBAL_change_buffer + cc;
   this_change->address = (uint64_t)addr;
   this_change->data = data;
@@ -642,7 +642,7 @@ void commit_pending_changes(void) {
 struct change *track_syscall_begin(void *env, target_ulong sysnr);
 struct change *track_syscall_begin(void *env, target_ulong sysnr) {
   int i;
-  QIRA_DEBUG("sysc:  %d\n", sysnr);
+  QIRA_DEBUG("sysc:  "TARGET_FMT_lu"\n", sysnr);
   if (GLOBAL_logstate->is_filtered == 1) {
     for (i = 0; i < 0x20; i+=4) {
       add_change(i, *(target_ulong*)(env+i), IS_WRITE | (sizeof(target_ulong)*8));
@@ -654,23 +654,23 @@ struct change *track_syscall_begin(void *env, target_ulong sysnr) {
 
 // all loads and store happen in libraries...
 void track_load(target_ulong addr, uint64_t data, int size) {
-  QIRA_DEBUG("load:  0x%x:%d\n", addr, size);
+  QIRA_DEBUG("load:  0x"TARGET_FMT_lx":%d\n", addr, size);
   add_change(addr, data, IS_MEM | size);
 }
 
 void track_store(target_ulong addr, uint64_t data, int size) {
-  QIRA_DEBUG("store: 0x%x:%d = 0x%lX\n", addr, size, data);
+  QIRA_DEBUG("store: 0x"TARGET_FMT_lx":%d = 0x%016"PRIx64"\n", addr, size, data);
   add_change(addr, data, IS_MEM | IS_WRITE | size);
 }
 
 void track_read(target_ulong base, target_ulong offset, target_ulong data, int size) {
-  QIRA_DEBUG("read:  %x+%x:%d = %x\n", base, offset, size, data);
+  QIRA_DEBUG("read:  "TARGET_FMT_lx"+"TARGET_FMT_lx":%d = "TARGET_FMT_lx"\n", base, offset, size, data);
   if ((int)offset < 0) return;
   if (GLOBAL_logstate->is_filtered == 0) add_change(offset, data, size);
 }
 
 void track_write(target_ulong base, target_ulong offset, target_ulong data, int size) {
-  QIRA_DEBUG("write: %x+%x:%d = %x\n", base, offset, size, data);
+  QIRA_DEBUG("write: "TARGET_FMT_lx"+"TARGET_FMT_lx":%d = "TARGET_FMT_lx"\n", base, offset, size, data);
   if ((int)offset < 0) return;
   if (GLOBAL_logstate->is_filtered == 0) add_change(offset, data, IS_WRITE | size);
   else add_pending_change(offset, data, IS_WRITE | size);
@@ -683,7 +683,7 @@ void track_kernel_read(void *host_addr, target_ulong guest_addr, long len) {
   if (unlikely(GLOBAL_QIRA_did_init == 0)) return;
 
   // this is generating tons of changes, and maybe not too useful
-  /*QIRA_DEBUG("kernel_read: %p %X %ld\n", host_addr, guest_addr, len);
+  /*QIRA_DEBUG("kernel_read: %p "TARGET_FMT_lx" %ld\n", host_addr, guest_addr, len);
   long i = 0;
   //for (; i < len; i+=4) add_change(guest_addr+i, ((unsigned int*)host_addr)[i], IS_MEM | 32);
   for (; i < len; i+=1) add_change(guest_addr+i, ((unsigned char*)host_addr)[i], IS_MEM | 8);*/
@@ -694,7 +694,7 @@ void track_kernel_write(void *host_addr, target_ulong guest_addr, long len) {
   // clamp at 0x40, badness
   //if (len > 0x40) len = 0x40;
 
-  QIRA_DEBUG("kernel_write: %p %X %ld\n", host_addr, guest_addr, len);
+  QIRA_DEBUG("kernel_write: %p "TARGET_FMT_lx" %ld\n", host_addr, guest_addr, len);
   long i = 0;
   //for (; i < len; i+=4) add_change(guest_addr+i, ((unsigned int*)host_addr)[i], IS_MEM | IS_WRITE | 32);
   for (; i < len; i+=1) add_change(guest_addr+i, ((unsigned char*)host_addr)[i], IS_MEM | IS_WRITE | 8);
@@ -787,7 +787,7 @@ int run_QIRA_log_from_fd(CPUArchState *env, int qira_log_fd, uint32_t to_change)
     uint32_t flags = pchange.flags;
     if (!(flags & IS_VALID)) break;
     if (pchange.changelist_number >= to_change) break;
-    QIRA_DEBUG("running old change %lX %d\n", pchange.address, pchange.changelist_number);
+    QIRA_DEBUG("running old change %016"PRIx64" %"PRId32"\n", pchange.address, pchange.changelist_number);
 
 #ifdef QEMU_USER
 #ifdef R_EAX
@@ -855,7 +855,7 @@ void run_QIRA_log(CPUArchState *env, int this_id, int to_change) {
 
   // check if this one has a parent and recurse here
   // BUG: FD ISSUE!
-  QIRA_DEBUG("parent is %d with first_change %d\n", plogstate.parent_id, plogstate.first_changelist_number);
+  QIRA_DEBUG("parent is %"PRId32" with first_change %"PRId32"\n", plogstate.parent_id, plogstate.first_changelist_number);
   if (plogstate.parent_id != -1) {
     run_QIRA_log(env, plogstate.parent_id, plogstate.first_changelist_number);
   }
@@ -1034,7 +1034,7 @@ uintptr_t tcg_qemu_tb_exec(CPUArchState *env, TranslationBlock *tb)
     }
 
 
-    QIRA_DEBUG("set changelist %d at %x(%d)\n", GLOBAL_logstate->changelist_number, tb->pc, tb->size);
+    QIRA_DEBUG("set changelist %"PRId32" at "TARGET_FMT_lx"(%d)\n", GLOBAL_logstate->changelist_number, tb->pc, tb->size);
 #endif
 
     tcg_target_ulong regs[TCG_TARGET_NB_REGS];
